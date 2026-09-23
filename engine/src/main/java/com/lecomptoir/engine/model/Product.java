@@ -16,4 +16,5 @@ public class Product {
     public String getReference() { return reference; }
     public String getName() { return name; }
     public double getUnitPrice() { return unitPrice; }
+    public ProductCategory getCategory() { return category; }
 }
