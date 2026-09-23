@@ -1,6 +1,6 @@
 package com.lecomptoir.engine.model;
 
-public class ProductCategory {
+public enum ProductCategory {
     FOODS,
     DRINKS,
     OTHERS
