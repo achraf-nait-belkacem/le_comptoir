@@ -12,7 +12,7 @@ public class CartLine {
         this.quantity = quantity;
     }
 
-    public Product getpProduct() { return product; }
+    public Product getProduct() { return product; }
     public int getQuantity() { return quantity; }
 
     public double getLineTotal() { return product.getUnitPrice() * quantity; }
