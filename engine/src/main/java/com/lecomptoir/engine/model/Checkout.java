@@ -9,25 +9,55 @@ import java.util.TreeMap;
 public class Checkout {
     private static final double DISCOUNT_THRESHOLD = 50.0;
     private static final double DISCOUNT_RATE = 0.10;
+    private static final int POINTS_PER_VOUCHER = 100;
+    private static final double VOUCHER_VALUE = 5.0;
 
     public Receipt checkout(Cart cart) {
-        Map<Double, Double> baseByRate = computeBaseByRate(cart);
+        return buildReceipt(cart, 0, false);
+    }
+
+    public Receipt checkout(Cart cart, LoyaltyCard card) {
+        return buildReceipt(cart, card.getPoints(), true);
+    }
+
+    private Receipt buildReceipt(Cart cart, int availablePoints, boolean hasCard) {
+        Map<Double, Double> grossBaseByRate = computeBaseByRate(cart);
+        double grossTotal = roundToCents(sum(grossBaseByRate));
+
+        List<DiscountOption> options = new ArrayList<>();
+        options.add(new DiscountOption(DiscountType.NONE, roundBases(grossBaseByRate), 0));
 
         double drinksDiscount = computeDrinksThirdFreeDiscount(cart);
-        baseByRate.computeIfPresent(ProductCategory.DRINKS.getVatRate(), (rate, base) -> base - drinksDiscount);
-
-        if (roundToCents(sum(baseByRate)) > DISCOUNT_THRESHOLD) {
-            baseByRate.replaceAll((rate, base) -> base - (base * DISCOUNT_RATE));
+        if (drinksDiscount > 0) {
+            options.add(new DiscountOption(DiscountType.DRINKS_THIRD_FREE,
+                    subtractFromDrinksBase(grossBaseByRate, drinksDiscount), 0));
         }
-        baseByRate.replaceAll((rate, base) -> roundToCents(base));
 
-        Map<Double, Double> vatByRate = new TreeMap<>();
-        baseByRate.forEach((rate, base) -> vatByRate.put(rate, roundToCents(base * rate)));
+        if (grossTotal > DISCOUNT_THRESHOLD) {
+            options.add(new DiscountOption(DiscountType.TEN_PERCENT_OVER_FIFTY,
+                    spreadAmount(grossBaseByRate, roundToCents(grossTotal * DISCOUNT_RATE)), 0));
+        }
 
-        double totalExclTax = roundToCents(sum(baseByRate));
-        double totalInclTax = roundToCents(totalExclTax + sum(vatByRate));
+        int vouchers = Math.min(availablePoints / POINTS_PER_VOUCHER, (int) (grossTotal / VOUCHER_VALUE));
+        if (vouchers > 0) {
+            options.add(new DiscountOption(DiscountType.LOYALTY,
+                    spreadAmount(grossBaseByRate, vouchers * VOUCHER_VALUE), vouchers * POINTS_PER_VOUCHER));
+        }
 
-        return new Receipt(cart.getLines(), totalExclTax, vatByRate, totalInclTax);
+        DiscountOption best = options.get(0);
+        for (DiscountOption option : options) {
+            if (computeTotalInclTax(option.baseByRate()) < computeTotalInclTax(best.baseByRate())) {
+                best = option;
+            }
+        }
+
+        double totalExclTax = roundToCents(sum(best.baseByRate()));
+        double totalInclTax = computeTotalInclTax(best.baseByRate());
+        double discountAmount = roundToCents(grossTotal - totalExclTax);
+        int pointsEarned = hasCard ? (int) Math.floor(totalInclTax) : 0;
+
+        return new Receipt(cart.getLines(), best.type(), discountAmount, totalExclTax,
+                computeVatByRate(best.baseByRate()), totalInclTax, best.pointsUsed(), pointsEarned);
     }
 
     private Map<Double, Double> computeBaseByRate(Cart cart) {
@@ -59,6 +89,42 @@ public class Checkout {
         return discount;
     }
 
+    private Map<Double, Double> subtractFromDrinksBase(Map<Double, Double> baseByRate, double amount) {
+        Map<Double, Double> result = new TreeMap<>(baseByRate);
+        result.computeIfPresent(ProductCategory.DRINKS.getVatRate(), (rate, base) -> base - amount);
+        return roundBases(result);
+    }
+
+    private Map<Double, Double> spreadAmount(Map<Double, Double> baseByRate, double amount) {
+        double total = sum(baseByRate);
+        double remaining = amount;
+        int index = 0;
+        Map<Double, Double> result = new TreeMap<>();
+        for (Map.Entry<Double, Double> entry : baseByRate.entrySet()) {
+            index++;
+            double share = index == baseByRate.size() ? remaining : roundToCents(amount * entry.getValue() / total);
+            remaining -= share;
+            result.put(entry.getKey(), roundToCents(entry.getValue() - share));
+        }
+        return result;
+    }
+
+    private Map<Double, Double> roundBases(Map<Double, Double> baseByRate) {
+        Map<Double, Double> result = new TreeMap<>();
+        baseByRate.forEach((rate, base) -> result.put(rate, roundToCents(base)));
+        return result;
+    }
+
+    private Map<Double, Double> computeVatByRate(Map<Double, Double> baseByRate) {
+        Map<Double, Double> vatByRate = new TreeMap<>();
+        baseByRate.forEach((rate, base) -> vatByRate.put(rate, roundToCents(base * rate)));
+        return vatByRate;
+    }
+
+    private double computeTotalInclTax(Map<Double, Double> baseByRate) {
+        return roundToCents(sum(baseByRate) + sum(computeVatByRate(baseByRate)));
+    }
+
     private double sum(Map<Double, Double> amounts) {
         double total = 0;
         for (double amount : amounts.values()) {
@@ -70,4 +136,6 @@ public class Checkout {
     private double roundToCents(double amount) {
         return Math.round(amount * 100) / 100.0;
     }
+
+    private record DiscountOption(DiscountType type, Map<Double, Double> baseByRate, int pointsUsed) {}
 }

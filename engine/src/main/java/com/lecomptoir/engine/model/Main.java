@@ -26,5 +26,13 @@ public class Main {
 
         System.out.println("Gros panier (remise 10 %) :");
         System.out.println(checkout.checkout(bigCart).display());
+
+        LoyaltyCard card = new LoyaltyCard(120);
+        Receipt loyaltyReceipt = checkout.checkout(smallCart, card);
+        card.record(loyaltyReceipt);
+
+        System.out.println("Petit panier avec carte fidélité (120 points) :");
+        System.out.println(loyaltyReceipt.display());
+        System.out.println("Solde de points après passage en caisse : " + card.getPoints());
     }
 }
