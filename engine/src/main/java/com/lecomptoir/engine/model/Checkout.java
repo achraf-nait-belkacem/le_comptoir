@@ -3,21 +3,39 @@ package com.lecomptoir.engine.model;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class Checkout {
     private static final double DISCOUNT_THRESHOLD = 50.0;
     private static final double DISCOUNT_RATE = 0.10;
 
     public Receipt checkout(Cart cart) {
-        double total = cart.getTotal();
+        Map<Double, Double> baseByRate = computeBaseByRate(cart);
 
-        total -= computeDrinksThirdFreeDiscount(cart);
+        double drinksDiscount = computeDrinksThirdFreeDiscount(cart);
+        baseByRate.computeIfPresent(ProductCategory.DRINKS.getVatRate(), (rate, base) -> base - drinksDiscount);
 
-        if (total > DISCOUNT_THRESHOLD) {
-            total = total - (total * DISCOUNT_RATE);
+        if (roundToCents(sum(baseByRate)) > DISCOUNT_THRESHOLD) {
+            baseByRate.replaceAll((rate, base) -> base - (base * DISCOUNT_RATE));
         }
+        baseByRate.replaceAll((rate, base) -> roundToCents(base));
 
-        return new Receipt(cart.getLines(), total);
+        Map<Double, Double> vatByRate = new TreeMap<>();
+        baseByRate.forEach((rate, base) -> vatByRate.put(rate, roundToCents(base * rate)));
+
+        double totalExclTax = roundToCents(sum(baseByRate));
+        double totalInclTax = roundToCents(totalExclTax + sum(vatByRate));
+
+        return new Receipt(cart.getLines(), totalExclTax, vatByRate, totalInclTax);
+    }
+
+    private Map<Double, Double> computeBaseByRate(Cart cart) {
+        Map<Double, Double> baseByRate = new TreeMap<>();
+        for (CartLine line : cart.getLines()) {
+            baseByRate.merge(line.getProduct().getCategory().getVatRate(), line.getLineTotal(), Double::sum);
+        }
+        return baseByRate;
     }
 
     private double computeDrinksThirdFreeDiscount(Cart cart) {
@@ -39,5 +57,17 @@ public class Checkout {
         }
 
         return discount;
+    }
+
+    private double sum(Map<Double, Double> amounts) {
+        double total = 0;
+        for (double amount : amounts.values()) {
+            total += amount;
+        }
+        return total;
+    }
+
+    private double roundToCents(double amount) {
+        return Math.round(amount * 100) / 100.0;
     }
 }

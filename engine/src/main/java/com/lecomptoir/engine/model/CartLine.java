@@ -4,7 +4,7 @@ public class CartLine {
     private final Product product;
     private final int quantity;
 
-    public CartLine (Product product, int quantity) {
+    public CartLine(Product product, int quantity) {
         if (quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be positive");
         }
