@@ -110,7 +110,7 @@ class CheckoutTest {
     }
 
     @Test
-    void drinksOfferIsAppliedBeforeFiftyThreshold() {
+    void tenPercentThresholdIsEvaluatedOnGrossTotal() {
         Product fruit = new Product("REF001", "Kiwi", 5.00, ProductCategory.FOODS);
         Product coca = new Product("REF002", "Cola 1L", 2.00, ProductCategory.DRINKS);
 
@@ -120,11 +120,12 @@ class CheckoutTest {
 
         Receipt receipt = new Checkout().checkout(cart);
 
-        assertEquals(49.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(DiscountType.TEN_PERCENT_OVER_FIFTY, receipt.getDiscountType());
+        assertEquals(45.90, receipt.getTotalExclTax(), 0.001);
     }
 
     @Test
-    void drinksOfferAndTenPercentDiscountCombine() {
+    void onlyBestDiscountIsKeptWhenDrinksOfferAndTenPercentApply() {
         Product fruit = new Product("REF001", "Kiwi", 5.00, ProductCategory.FOODS);
         Product coca = new Product("REF002", "Cola 1L", 2.00, ProductCategory.DRINKS);
 
@@ -134,7 +135,23 @@ class CheckoutTest {
 
         Receipt receipt = new Checkout().checkout(cart);
 
-        assertEquals(48.60, receipt.getTotalExclTax(), 0.001);
+        assertEquals(DiscountType.TEN_PERCENT_OVER_FIFTY, receipt.getDiscountType());
+        assertEquals(5.60, receipt.getDiscountAmount(), 0.001);
+        assertEquals(50.40, receipt.getTotalExclTax(), 0.001);
+    }
+
+    @Test
+    void drinksOfferWinsOverTenPercentWhenItSavesMore() {
+        Product champagne = new Product("REF040", "Champagne", 20.00, ProductCategory.DRINKS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(champagne, 3));
+
+        Receipt receipt = new Checkout().checkout(cart);
+
+        assertEquals(DiscountType.DRINKS_THIRD_FREE, receipt.getDiscountType());
+        assertEquals(40.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(48.00, receipt.getTotalInclTax(), 0.001);
     }
 
     @Test
@@ -254,5 +271,156 @@ class CheckoutTest {
         cart.addLine(new CartLine(rice, 3));
 
         assertEquals(1, receipt.getLines().size());
+    }
+
+    @Test
+    void loyaltyDiscountAppliesWhenCardHasHundredPoints() {
+        Product soap = new Product("REF030", "Savon", 10.00, ProductCategory.OTHERS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 1));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(100));
+
+        assertEquals(DiscountType.LOYALTY, receipt.getDiscountType());
+        assertEquals(5.00, receipt.getDiscountAmount(), 0.001);
+        assertEquals(5.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(6.00, receipt.getTotalInclTax(), 0.001);
+        assertEquals(100, receipt.getPointsUsed());
+        assertEquals(6, receipt.getPointsEarned());
+    }
+
+    @Test
+    void drinksOfferWinsOverLoyalty() {
+        Product juice = new Product("REF041", "Jus pressé", 10.00, ProductCategory.DRINKS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(juice, 3));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(100));
+
+        assertEquals(DiscountType.DRINKS_THIRD_FREE, receipt.getDiscountType());
+        assertEquals(20.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(0, receipt.getPointsUsed());
+        assertEquals(24, receipt.getPointsEarned());
+    }
+
+    @Test
+    void tenPercentWinsOverLoyalty() {
+        Product soap = new Product("REF030", "Savon", 10.00, ProductCategory.OTHERS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 8));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(100));
+
+        assertEquals(DiscountType.TEN_PERCENT_OVER_FIFTY, receipt.getDiscountType());
+        assertEquals(72.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(86.40, receipt.getTotalInclTax(), 0.001);
+        assertEquals(0, receipt.getPointsUsed());
+        assertEquals(86, receipt.getPointsEarned());
+    }
+
+    @Test
+    void loyaltyWinsOverTenPercentWithSeveralVouchers() {
+        Product soap = new Product("REF030", "Savon", 10.00, ProductCategory.OTHERS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 6));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(250));
+
+        assertEquals(DiscountType.LOYALTY, receipt.getDiscountType());
+        assertEquals(10.00, receipt.getDiscountAmount(), 0.001);
+        assertEquals(50.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(200, receipt.getPointsUsed());
+        assertEquals(60, receipt.getPointsEarned());
+    }
+
+    @Test
+    void tieKeepsTheOfferThatSparesLoyaltyPoints() {
+        Product juice = new Product("REF041", "Jus pressé", 5.00, ProductCategory.DRINKS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(juice, 3));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(100));
+
+        assertEquals(DiscountType.DRINKS_THIRD_FREE, receipt.getDiscountType());
+        assertEquals(10.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(0, receipt.getPointsUsed());
+    }
+
+    @Test
+    void noLoyaltyDiscountBelowHundredPoints() {
+        Product soap = new Product("REF030", "Savon", 10.00, ProductCategory.OTHERS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 1));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(99));
+
+        assertEquals(DiscountType.NONE, receipt.getDiscountType());
+        assertEquals(10.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(0, receipt.getPointsUsed());
+        assertEquals(12, receipt.getPointsEarned());
+    }
+
+    @Test
+    void loyaltyDiscountIsCappedByCartAmount() {
+        Product soap = new Product("REF030", "Savon", 12.00, ProductCategory.OTHERS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 1));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(300));
+
+        assertEquals(DiscountType.LOYALTY, receipt.getDiscountType());
+        assertEquals(10.00, receipt.getDiscountAmount(), 0.001);
+        assertEquals(2.00, receipt.getTotalExclTax(), 0.001);
+        assertEquals(200, receipt.getPointsUsed());
+    }
+
+    @Test
+    void pointsAreEarnedOnTotalInclTaxRoundedDown() {
+        Product soap = new Product("REF030", "Savon", 10.40, ProductCategory.OTHERS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 1));
+
+        Receipt receipt = new Checkout().checkout(cart, new LoyaltyCard(0));
+
+        assertEquals(12.48, receipt.getTotalInclTax(), 0.001);
+        assertEquals(12, receipt.getPointsEarned());
+    }
+
+    @Test
+    void noLoyaltyPointsWithoutCard() {
+        Product soap = new Product("REF030", "Savon", 10.00, ProductCategory.OTHERS);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 1));
+
+        Receipt receipt = new Checkout().checkout(cart);
+
+        assertEquals(0, receipt.getPointsUsed());
+        assertEquals(0, receipt.getPointsEarned());
+    }
+
+    @Test
+    void checkoutDoesNotChangeLoyaltyCard() {
+        Product soap = new Product("REF030", "Savon", 10.00, ProductCategory.OTHERS);
+        LoyaltyCard card = new LoyaltyCard(100);
+
+        Cart cart = new Cart();
+        cart.addLine(new CartLine(soap, 1));
+
+        Checkout checkout = new Checkout();
+        Receipt first = checkout.checkout(cart, card);
+        Receipt second = checkout.checkout(cart, card);
+
+        assertEquals(100, card.getPoints());
+        assertEquals(100, first.getPointsUsed());
+        assertEquals(100, second.getPointsUsed());
     }
 }
