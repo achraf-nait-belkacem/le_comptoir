@@ -7,14 +7,21 @@ public class Main {
 
         Cart smallCart = new Cart();
         smallCart.addLine(new CartLine(fruit, 2));
-        smallCart.addLine(new CartLine(coca, 3));
+        smallCart.addLine(new CartLine(coca, 2));
 
-        System.out.println("Petit panier (pas de remise) :");
+        System.out.println("Petit panier (aucune remise) :");
         System.out.println(new Checkout().checkout(smallCart).display());
 
+        Cart drinksCart = new Cart();
+        drinksCart.addLine(new CartLine(fruit, 2));
+        drinksCart.addLine(new CartLine(coca, 3));  // 3e boisson offerte : -1.80
+
+        System.out.println("Panier boissons (3e boisson offerte) :");
+        System.out.println(new Checkout().checkout(drinksCart).display());
+
         Cart bigCart = new Cart();
-        bigCart.addLine(new CartLine(fruit, 10));  // 25.00
-        bigCart.addLine(new CartLine(coca, 15));   // 27.00 → total 52.00
+        bigCart.addLine(new CartLine(fruit, 22));  // 55.00
+        bigCart.addLine(new CartLine(coca, 2));    // 3.60 -> total 58.60, supérieur à 50
 
         System.out.println("Gros panier (remise 10%) :");
         System.out.println(new Checkout().checkout(bigCart).display());
